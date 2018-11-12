@@ -13,14 +13,14 @@ public class WorkersGroup {
     private final Logger LOG = LoggerFactory.getLogger(WorkersGroup.class);
 
     private final WorkerThread[] workers;
-    private AtomicInteger integer = new AtomicInteger();
+    private final AtomicInteger integer = new AtomicInteger();
 
-    public WorkersGroup(int threadsCount) {
+    public WorkersGroup(int threadsCount, final EventHandler handler) {
         //todo precondition
         this.workers = new WorkerThread[threadsCount];
         for (int i = 0; i < threadsCount; i++) {
             try {
-                final WorkerThread workerThread = new WorkerThread();
+                final WorkerThread workerThread = new WorkerThread(handler);
                 workerThread.start(); //happens before
                 workers[i] = workerThread;
             } catch (IOException ex) {

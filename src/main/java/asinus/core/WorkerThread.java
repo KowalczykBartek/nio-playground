@@ -16,21 +16,22 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * WorkerThread responsible for handling READ/WRITE operations on SelectableChannel in non blocking manner.
  * Writes and reads are performed always inside the same thread, so, think about each operation inside this class
  * as being single threaded program :)
- * <p>
  * Yes, if are familiar with Netty internals, you can note that i just copied they idea :)
  */
 public class WorkerThread extends Thread {
     private final Logger LOG = LoggerFactory.getLogger(WorkersGroup.class);
 
     //this field is accessed from other threads, so, make it concurrent.
-    private ConcurrentLinkedQueue<Task> pendingTasks = new ConcurrentLinkedQueue();
+    private final ConcurrentLinkedQueue<Task> pendingTasks = new ConcurrentLinkedQueue();
 
-    private Selector selector;
-    private ByteBuffer readBuffer = ByteBuffer.allocate(8192);
-    private Map<SocketChannel, Queue<ByteBuffer>> pendingData = new HashMap<>();
+    private final Selector selector;
+    private final ByteBuffer readBuffer = ByteBuffer.allocate(8192);
+    private final Map<SocketChannel, Queue<ByteBuffer>> pendingData = new HashMap<>();
+    private final EventHandler handler;
 
-    public WorkerThread() throws IOException {
-        selector = SelectorProvider.provider().openSelector();
+    public WorkerThread(final EventHandler handler) throws IOException {
+        this.handler = handler;
+        this.selector = SelectorProvider.provider().openSelector();
     }
 
     @Override
@@ -48,9 +49,9 @@ public class WorkerThread extends Thread {
                 iterator.forEachRemaining(key -> {
 
                     if (key.isReadable()) {
-                        read(key);
+                        read0(key);
                     } else if (key.isWritable()) {
-                        write(key);
+                        write0(key);
                     }
 
                 });
@@ -68,7 +69,7 @@ public class WorkerThread extends Thread {
      *
      * @param key
      */
-    private void write(final SelectionKey key) {
+    private void write0(final SelectionKey key) {
         final SocketChannel channel = (SocketChannel) key.channel();
         final Queue<ByteBuffer> bufferQueue = pendingData.get(channel);
         if (bufferQueue != null) {
@@ -104,7 +105,7 @@ public class WorkerThread extends Thread {
      *
      * @param key
      */
-    private void read(final SelectionKey key) {
+    private void read0(final SelectionKey key) {
         final SocketChannel channel = (SocketChannel) key.channel();
         readBuffer.clear();
         try {
@@ -112,24 +113,10 @@ public class WorkerThread extends Thread {
             byte[] dataCopy = new byte[read];
             readBuffer.flip();
             readBuffer.get(dataCopy);
-//            final ByteBuffer dataToPassFuther = ByteBuffer.wrap(dataCopy);
-            System.out.println(new String(dataCopy));
+            final ByteBuffer dataToPassFuther = ByteBuffer.wrap(dataCopy);
 
-            /*
-             * MOCK REDIS RESPONSE OPERATION
-             * TODO extract as handler.
-             */
-
-            final Queue<ByteBuffer> bufferQueue = pendingData.get(channel);
-            if (bufferQueue != null) {
-                bufferQueue.add(ByteBuffer.wrap("+PONG\n\r".getBytes()));
-                flushRead(key);
-            } else {
-                final LinkedList<ByteBuffer> newBufferQueue = new LinkedList<>();
-                newBufferQueue.add(ByteBuffer.wrap("+PONG\n\r".getBytes()));
-                pendingData.put(channel, newBufferQueue);
-                flushRead(key);
-            }
+            //interaction with server user.
+            handler.handle(this, new Context(key), dataToPassFuther);
 
         } catch (IOException ex) {
             LOG.error("Unable to perform read operation {}", ex);
@@ -154,5 +141,32 @@ public class WorkerThread extends Thread {
         }));
 
         this.selector.wakeup();
+    }
+
+    /**
+     * Use only from main loop.
+     * @param data
+     */
+    public void write(final Context context, final ByteBuffer data) {
+        final SocketChannel channel = context.getSocketChannel();
+        final Queue<ByteBuffer> bufferQueue = pendingData.get(channel);
+        if (bufferQueue != null) {
+            bufferQueue.add(data);
+            flushRead(context.getSelectionKey());
+        } else {
+            final LinkedList<ByteBuffer> newBufferQueue = new LinkedList<>();
+            newBufferQueue.add(data);
+            pendingData.put(channel, newBufferQueue);
+            flushRead(context.getSelectionKey());
+        }
+    }
+
+    /**
+     * Schedule closing socket.
+     * @param context
+     */
+    public void close(final Context context)
+    {
+        //TODO
     }
 }

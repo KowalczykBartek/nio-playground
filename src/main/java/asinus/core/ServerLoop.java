@@ -24,27 +24,29 @@ public class ServerLoop extends Thread {
     private final InetAddress inetAddress;
     private final int port;
 
-    private ServerSocketChannel serverSocketChannel;
-    private Selector selector;
+    private final ServerSocketChannel serverSocketChannel;
+    private final Selector selector;
 
-    private WorkersGroup workersGroup;
+    private final WorkersGroup workersGroup;
+    private final EventHandler handler;
 
-    public ServerLoop(final InetAddress address, final int port) throws IOException {
+    public ServerLoop(final InetAddress address, final int port, final EventHandler handler) throws IOException {
 
         this.inetAddress = address;
         this.port = port;
 
-        selector = SelectorProvider.provider().openSelector();
+        this.selector = SelectorProvider.provider().openSelector();
 
         this.serverSocketChannel = ServerSocketChannel.open();
-        serverSocketChannel.configureBlocking(false);
+        this.serverSocketChannel.configureBlocking(false);
         InetSocketAddress inetSocketAddress = new InetSocketAddress(this.inetAddress, this.port);
-        serverSocketChannel.socket().bind(inetSocketAddress);
+        this.serverSocketChannel.socket().bind(inetSocketAddress);
 
-        serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
+        this.serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
 
         //WorkersGroup should be initialized outside the ServerLoop.
-        workersGroup = new WorkersGroup(Runtime.getRuntime().availableProcessors());
+        this.workersGroup = new WorkersGroup(Runtime.getRuntime().availableProcessors(), handler);
+        this.handler = handler;
     }
 
     @Override
