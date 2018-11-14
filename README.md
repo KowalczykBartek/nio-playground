@@ -11,18 +11,18 @@ Because of the only thing I can do is cloning Netty (because it is cool !), byte
 /**
  * {@param nioThread} is your loop owner and {@param context} is socket.
  */
-EventHandler handler = (nioThread, context, data) -> {
+final EventHandler handler = (context, data) -> {
 
     final int remaining = data.remaining();
     final byte[] rawData = new byte[remaining];
     data.get(rawData);
     final String request = new String(rawData);
 
-    System.out.println(request);
+    LOG.info("Received request, as string {}", request);
 
     data.flip();
-
-    nioThread.write(context, data);
+    context.write(context, data)//
+            .setCallback(isSuccess -> LOG.info("Hey ! i was called after writing data to wire !"));
 };
 ```
 

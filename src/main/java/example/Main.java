@@ -1,7 +1,9 @@
 package example;
 
-import asinus.core.EventHandler;
-import asinus.core.ServerLoop;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import playground.core.EventHandler;
+import playground.core.ServerLoop;
 
 import java.io.IOException;
 
@@ -9,22 +11,26 @@ import java.io.IOException;
  * Just an example.
  */
 public class Main {
+
+    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
+
     public static void main(final String... args) throws IOException {
 
         /**
          * {@param nioThread} is your loop owner and {@param context} is socket.
          */
-        EventHandler handler = (nioThread, context, data) -> {
+        final EventHandler handler = (context, data) -> {
 
             final int remaining = data.remaining();
             final byte[] rawData = new byte[remaining];
             data.get(rawData);
             final String request = new String(rawData);
 
-            System.out.println(request);
+            LOG.info("Received request, as string {}", request);
 
             data.flip();
-            nioThread.write(context, data);
+            context.write(context, data)//
+                    .setCallback(isSuccess -> LOG.info("Hey ! i was called after writing data to wire !"));
         };
 
         final ServerLoop serverLoop = new ServerLoop(null, 8080, handler);

@@ -1,4 +1,4 @@
-package asinus.core;
+package playground.core;
 
 public interface Task {
     /**

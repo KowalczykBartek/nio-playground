@@ -1,4 +1,4 @@
-package asinus.core;
+package playground.core;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +28,6 @@ public class ServerLoop extends Thread {
     private final Selector selector;
 
     private final WorkersGroup workersGroup;
-    private final EventHandler handler;
 
     public ServerLoop(final InetAddress address, final int port, final EventHandler handler) throws IOException {
 
@@ -46,7 +45,6 @@ public class ServerLoop extends Thread {
 
         //WorkersGroup should be initialized outside the ServerLoop.
         this.workersGroup = new WorkersGroup(Runtime.getRuntime().availableProcessors(), handler);
-        this.handler = handler;
     }
 
     @Override

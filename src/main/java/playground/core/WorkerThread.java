@@ -1,7 +1,10 @@
-package asinus.core;
+package playground.core;
 
+import playground.core.context.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import playground.core.functional.Data;
+import playground.core.functional.Promise;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -19,14 +22,14 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * Yes, if are familiar with Netty internals, you can note that i just copied they idea :)
  */
 public class WorkerThread extends Thread {
-    private final Logger LOG = LoggerFactory.getLogger(WorkersGroup.class);
+    private static final Logger LOG = LoggerFactory.getLogger(WorkersGroup.class);
 
     //this field is accessed from other threads, so, make it concurrent.
-    private final ConcurrentLinkedQueue<Task> pendingTasks = new ConcurrentLinkedQueue();
+    private final ConcurrentLinkedQueue<Task> pendingTasks = new ConcurrentLinkedQueue<>();
 
     private final Selector selector;
     private final ByteBuffer readBuffer = ByteBuffer.allocate(8192);
-    private final Map<SocketChannel, Queue<ByteBuffer>> pendingData = new HashMap<>();
+    private final Map<SocketChannel, Queue<Data>> pendingData = new HashMap<>();
     private final EventHandler handler;
 
     public WorkerThread(final EventHandler handler) throws IOException {
@@ -53,7 +56,6 @@ public class WorkerThread extends Thread {
                     } else if (key.isWritable()) {
                         write0(key);
                     }
-
                 });
 
             } catch (IOException ex) {
@@ -71,17 +73,20 @@ public class WorkerThread extends Thread {
      */
     private void write0(final SelectionKey key) {
         final SocketChannel channel = (SocketChannel) key.channel();
-        final Queue<ByteBuffer> bufferQueue = pendingData.get(channel);
+        final Queue<Data> bufferQueue = pendingData.get(channel);
         if (bufferQueue != null) {
             while (!bufferQueue.isEmpty()) {
-                final ByteBuffer buffer = bufferQueue.peek();
+                final Data data = bufferQueue.peek();
                 try {
+                    final ByteBuffer buffer = data.getData();
                     channel.write(buffer);
                     if (buffer.remaining() > 0) {
                         //ok, call me later when you will be ready to get more data.
                         return;
                     }
                     bufferQueue.remove();
+                    //if user expects wait for promise, now, it will be called.
+                    data.getPromise().complete(true);
                 } catch (IOException ex) {
                     LOG.error("Unable to perform write operation {}", ex);
                     try {
@@ -92,6 +97,7 @@ public class WorkerThread extends Thread {
                     }
                     key.cancel();
                     pendingData.remove(channel); /* todo */
+                    data.getPromise().complete(false);
                 }
             }
         }
@@ -116,7 +122,7 @@ public class WorkerThread extends Thread {
             final ByteBuffer dataToPassFuther = ByteBuffer.wrap(dataCopy);
 
             //interaction with server user.
-            handler.handle(this, new Context(key), dataToPassFuther);
+            handler.handle(new Context(this, key), dataToPassFuther);
 
         } catch (IOException ex) {
             LOG.error("Unable to perform read operation {}", ex);
@@ -145,28 +151,33 @@ public class WorkerThread extends Thread {
 
     /**
      * Use only from main loop.
+     *
      * @param data
      */
-    public void write(final Context context, final ByteBuffer data) {
-        final SocketChannel channel = context.getSocketChannel();
-        final Queue<ByteBuffer> bufferQueue = pendingData.get(channel);
+    public Promise write(final SelectionKey selectionKey, final ByteBuffer data) {
+        final Promise promise = new Promise();
+
+        final SocketChannel channel = (SocketChannel) selectionKey.channel();
+        final Queue<Data> bufferQueue = pendingData.get(channel);
         if (bufferQueue != null) {
-            bufferQueue.add(data);
-            flushRead(context.getSelectionKey());
+            bufferQueue.add(new Data(data, promise));
+            flushRead(selectionKey);
         } else {
-            final LinkedList<ByteBuffer> newBufferQueue = new LinkedList<>();
-            newBufferQueue.add(data);
+            final LinkedList<Data> newBufferQueue = new LinkedList<>();
+            newBufferQueue.add(new Data(data, promise));
             pendingData.put(channel, newBufferQueue);
-            flushRead(context.getSelectionKey());
+            flushRead(selectionKey);
         }
+
+        return promise;
     }
 
     /**
      * Schedule closing socket.
+     *
      * @param context
      */
-    public void close(final Context context)
-    {
+    public void close(final Context context) {
         //TODO
     }
 }
