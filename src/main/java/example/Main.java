@@ -17,7 +17,7 @@ public class Main {
     public static void main(final String... args) throws IOException {
 
         /**
-         * {@param nioThread} is your loop owner and {@param context} is socket.
+         * Perform write on {@param context}.
          */
         final EventHandler handler = (context, data) -> {
 

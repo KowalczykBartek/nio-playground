@@ -9,7 +9,7 @@ Because of the only thing I can do is cloning Netty (because it is cool !), byte
 
 ```bash
 /**
- * {@param nioThread} is your loop owner and {@param context} is socket.
+ * Perform write on {@param context}.
  */
 final EventHandler handler = (context, data) -> {
 
